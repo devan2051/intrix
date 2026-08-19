@@ -1,9 +1,21 @@
-name,x,y
-Select
-Reception,2,1
-Library,18,2
-Room 101,3,16
-Room 204,22,16
-Laboratory,12,9
-Office,25,3
-Exit A,0,18
+floor,name,category,x,y,width,height
+ground,Reception,Public,4,4,8,8
+ground,Emergency Department,Emergency,4,15,8,8
+ground,Pharmacy,Service,14,4,8,8
+ground,Registration,Service,14,15,8,8
+ground,Main Waiting Area,Public,25,10,10,20
+1,General Ward,Ward,4,4,8,8
+1,Nursing Station,Service,14,4,8,8
+1,Patient Room 101,Patient Room,4,15,8,8
+1,Patient Room 102,Patient Room,14,15,8,8
+1,Laboratory,Service,25,10,10,20
+2,ICU,Critical Care,4,4,8,8
+2,Radiology,Diagnostic,14,4,8,8
+2,Operation Theatre,Surgery,4,15,8,8
+2,Staff Area,Staff,14,15,8,8
+2,Patient Room 204,Patient Room,25,10,10,20
+3,Cardiology,Consultation,4,4,8,8
+3,Consultation Rooms,Consultation,14,4,8,8
+3,Neurology,Consultation,4,15,8,8
+3,Waiting Area,Public,14,15,8,8
+3,Physiotherapy,Service,25,10,10,20

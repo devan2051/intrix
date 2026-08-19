@@ -1,227 +1,203 @@
-"""
-app.py
-------
-INTRIX — Simulated Bluetooth-Based Indoor Positioning
-Using Mathematical Trilateration
-
-This file is the Streamlit interface only. All the actual math and
-simulation logic lives in the modules/ package -- see:
-
-    modules/trilateration.py  -> distance formula, trilateration, error
-    modules/simulation.py     -> hidden ground truth, simulated Bluetooth
-                                  measurements, measurement noise
-    modules/locator.py        -> secondary destination-distance feature
-    modules/visualization.py  -> the Plotly map
-
-Run with:
-    streamlit run app.py
-"""
-
 import numpy as np
-import pandas as pd
 import streamlit as st
 
 from modules.trilateration import trilaterate, position_error
 from modules.simulation import generate_ground_truth, true_distances, simulate_measurements
-from modules.locator import load_locations, distance_to_destination
-from modules.visualization import build_map
-
-st.set_page_config(page_title="INTRIX", page_icon="📡", layout="wide")
-
-
-# ---------------------------------------------------------------------
-# Load fixed, known data
-# ---------------------------------------------------------------------
-@st.cache_data
-def load_beacons(path="data/beacons.csv"):
-    return pd.read_csv(path)
-
-
-beacons_df = load_beacons()
-locations_df = load_locations("data/locations.csv")
-
-# ---------------------------------------------------------------------
-# Session state
-# ---------------------------------------------------------------------
-# ground_truth is INTRIX's hidden, internal test position. It exists
-# only so the simulation has something to generate measurements from
-# and something to grade the estimate against. It is never given to
-# the trilateration algorithm.
-if "ground_truth" not in st.session_state:
-    st.session_state.ground_truth = generate_ground_truth()
-
-if "result" not in st.session_state:
-    st.session_state.result = None
-
-# ---------------------------------------------------------------------
-# Header
-# ---------------------------------------------------------------------
-st.title("📡 INTRIX")
-st.subheader("Simulated Bluetooth-Based Indoor Positioning Using Mathematical Trilateration")
-
-st.info(
-    "INTRIX does not use physical Bluetooth hardware. It **simulates** "
-    "Bluetooth-based distance measurements to demonstrate how mathematical "
-    "trilateration can estimate an unknown indoor position."
+from modules.locator import distance_to_destination, nearest_location
+from modules.visualization import build_floor_map
+from modules.floors import (
+    FLOOR_CODES,
+    FLOOR_ICON,
+    FLOOR_WIDTH,
+    FLOOR_HEIGHT,
+    GROUND_TRUTH_X_RANGE,
+    GROUND_TRUTH_Y_RANGE,
+    floor_label,
+    normalize_floor_code,
+    beacons_for_floor,
+    locations_for_floor,
 )
+from modules.qr import build_floor_url, generate_qr_image
 
-# ---------------------------------------------------------------------
-# Section: Fixed Bluetooth Beacons
-# ---------------------------------------------------------------------
-st.header("📡 Fixed Bluetooth Beacons")
-st.write("These beacon positions are fixed in the building and known in advance.")
-st.dataframe(beacons_df, hide_index=True, use_container_width=True)
+st.set_page_config(page_title="INTRIX — Hospital Locator", page_icon="🏥", layout="wide")
 
-# ---------------------------------------------------------------------
-# Section: Measurement Noise
-# ---------------------------------------------------------------------
-st.header("⚙️ Measurement Noise")
-noise_percent = st.slider(
-    "Simulated Bluetooth measurement noise",
-    min_value=0, max_value=30, value=10, step=1,
-    format="%d%%",
-    help="Represents uncertainty in Bluetooth-based distance estimation (e.g. from RSSI).",
-)
+DEFAULT_NOISE_PERCENT = 12
 
-col1, col2 = st.columns([1, 3])
-with col1:
-    if st.button("🎲 New Random Scenario"):
-        st.session_state.ground_truth = generate_ground_truth()
-        st.session_state.result = None
-with col2:
-    st.caption(
-        "Generates a new hidden device position for the simulation to test against. "
-        "This position is not shown to the trilateration algorithm."
-    )
+PLOTLY_CONFIG = {"displayModeBar": False, "scrollZoom": False}
 
-x_true, y_true = st.session_state.ground_truth
 
-# ---------------------------------------------------------------------
-# Section: Simulated Bluetooth Measurements
-# ---------------------------------------------------------------------
-true_d = true_distances(x_true, y_true, beacons_df["x"].values, beacons_df["y"].values)
-measured_d = simulate_measurements(true_d, noise_percent)
+def simulation_status(error_m):
+    if error_m < 1.0:
+        return "🟢 Very close"
+    elif error_m < 3.0:
+        return "🟡 Moderate difference"
+    return "🔴 Large difference"
 
-st.header("📶 Simulated Bluetooth Measurements")
-st.caption("**Simulated Bluetooth Distance Measurements** — not real Bluetooth hardware readings.")
-measurements_df = beacons_df[["beacon"]].copy()
-measurements_df["Estimated Distance (m)"] = np.round(measured_d, 2)
-st.dataframe(measurements_df, hide_index=True, use_container_width=True)
 
-# ---------------------------------------------------------------------
-# Section: Locate Device
-# ---------------------------------------------------------------------
-st.header("📍 Locate Device")
-st.write(
-    "Clicking the button below sends **only** the beacon coordinates and the "
-    "simulated measurements above into the trilateration algorithm. "
-    "The hidden device position is never given to it."
-)
+def run_locate_me(floor):
+    if floor not in st.session_state.ground_truth_by_floor:
+        st.session_state.ground_truth_by_floor[floor] = generate_ground_truth(
+            x_range=GROUND_TRUTH_X_RANGE, y_range=GROUND_TRUTH_Y_RANGE
+        )
+    x_true, y_true = st.session_state.ground_truth_by_floor[floor]
 
-if st.button("📍 Locate Device", type="primary"):
-    x_est, y_est = trilaterate(beacons_df["x"].values, beacons_df["y"].values, measured_d)
+    bdf = beacons_for_floor(floor)
+    true_d = true_distances(x_true, y_true, bdf["x"].values, bdf["y"].values)
+    measured_d = simulate_measurements(true_d, DEFAULT_NOISE_PERCENT)
+
+    x_est, y_est = trilaterate(bdf["x"].values, bdf["y"].values, measured_d)
     err = position_error(x_true, y_true, x_est, y_est)
-    st.session_state.result = {
+
+    st.session_state.result_by_floor[floor] = {
         "x_est": x_est,
         "y_est": y_est,
         "error": err,
         "measured_d": measured_d,
-        "noise_percent": noise_percent,
+        "beacons": bdf,
+        "ground_truth": (x_true, y_true),
+        "noise_percent": DEFAULT_NOISE_PERCENT,
     }
 
-result = st.session_state.result
+st.session_state.setdefault("ground_truth_by_floor", {})
+st.session_state.setdefault("result_by_floor", {})
+
+if "floor" not in st.session_state:
+    qp_floor = normalize_floor_code(st.query_params.get("floor"))
+    st.session_state.floor = qp_floor if qp_floor else FLOOR_CODES[0]
+
+st.sidebar.title("📡 INTRIX")
+st.sidebar.caption("Hospital Indoor Positioning")
+st.sidebar.markdown("#### FLOORS")
+
+came_from_qr = normalize_floor_code(st.query_params.get("floor")) is not None
+
+selected_floor = st.sidebar.radio(
+    "Select floor",
+    FLOOR_CODES,
+    format_func=lambda c: f"{FLOOR_ICON} {floor_label(c)}",
+    index=FLOOR_CODES.index(st.session_state.floor),
+    label_visibility="collapsed",
+)
+st.session_state.floor = selected_floor
+floor = st.session_state.floor
+
+st.query_params["floor"] = floor
+
+st.sidebar.info(f"📍 Currently viewing:\n**{floor_label(floor)}**")
+if came_from_qr:
+    st.sidebar.caption("✅ Floor selected automatically from your link/QR code.")
+else:
+    st.sidebar.caption("Selected manually. Arriving from a floor's QR code selects it automatically.")
+
+st.sidebar.divider()
+with st.sidebar.expander("📱 Floor QR Codes"):
+    st.caption(
+        "Each floor has a printed QR code encoding a link like the one "
+        "below. Scanning it opens INTRIX with that floor already selected."
+    )
+    base_url = st.text_input(
+        "This app's URL", value="https://your-intrix-app.streamlit.app",
+        help="Replace with the actual URL this app is deployed at.",
+    )
+    qr_floor_code = st.selectbox(
+        "Preview QR for floor", FLOOR_CODES, format_func=floor_label, key="qr_floor_choice"
+    )
+    floor_url = build_floor_url(base_url, qr_floor_code)
+    qr_img = generate_qr_image(floor_url)
+    st.image(qr_img, caption=floor_url, width=180)
+    
+st.title("📡 INTRIX")
+st.caption("Hospital Indoor Positioning Using Simulated Bluetooth Trilateration")
+st.info(
+    "🏥 This is a **fictional, simulated** hospital. "
+    "INTRIX does not use real Bluetooth hardware and is not connected to any real hospital."
+)
+
+st.subheader(f"{FLOOR_ICON} {floor_label(floor)}")
+
+beacons_df = beacons_for_floor(floor)
+locations_df = locations_for_floor(floor)
+
+col_locate, col_moved = st.columns([2, 1])
+with col_locate:
+    if st.button("📍 LOCATE ME", type="primary", width='stretch'):
+        run_locate_me(floor)
+with col_moved:
+    if st.button("🔄 Simulate I Moved", width='stretch',
+                  help="Simulates that you've walked to a different spot on this floor."):
+        st.session_state.ground_truth_by_floor.pop(floor, None)
+        run_locate_me(floor)
+
+result = st.session_state.result_by_floor.get(floor)
+destination_point = None
 
 if result is not None:
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Estimated X", f"{result['x_est']:.2f} m")
-    c2.metric("Estimated Y", f"{result['y_est']:.2f} m")
-    c3.metric("Position Error", f"{result['error']:.2f} m")
+    near_name, _near_dist = nearest_location(result["x_est"], result["y_est"], locations_df)
+    st.metric("📍 Your Location", f"Near {near_name}" if near_name else "Unknown")
 
-    # -------------------------------------------------------------
-    # Section: Indoor Destination Locator (secondary feature)
-    # -------------------------------------------------------------
-    st.header("📍 Indoor Destination Locator")
-    st.caption("Secondary feature — distance from the *estimated* device position to a destination.")
-    dest_name = st.selectbox("Select a destination", locations_df["name"].tolist())
+    st.markdown("#### 🧭 Where do you want to go?")
+    dest_name = st.selectbox("Destination", locations_df["name"].tolist())
     dest_row = locations_df[locations_df["name"] == dest_name].iloc[0]
-    dest_distance = distance_to_destination(
-        result["x_est"], result["y_est"], dest_row["x"], dest_row["y"]
-    )
-    st.write(f"Distance from estimated position to **{dest_name}**: **{dest_distance:.2f} m**")
+    dest_distance = distance_to_destination(result["x_est"], result["y_est"], dest_row["x"], dest_row["y"])
+    st.write(f"🏥 **{dest_name}** is approximately **{dest_distance:.1f} m** away.")
     destination_point = {"name": dest_name, "x": dest_row["x"], "y": dest_row["y"]}
 
-    # -------------------------------------------------------------
-    # Section: Position Map
-    # -------------------------------------------------------------
-    st.header("🗺️ Position Map")
-    fig = build_map(
-        beacons_df,
-        result["measured_d"],
-        result["x_est"],
-        result["y_est"],
-        ground_truth=(x_true, y_true),
-        destination=destination_point,
+    show_circles = st.checkbox(
+        "Show measurement circles on map", value=True,
+        help="Shows the Bluetooth distance circles used to calculate your position.",
     )
-    st.plotly_chart(fig, use_container_width=True)
-
 else:
-    st.caption("👆 Click **Locate Device** above to run the trilateration algorithm and see the map.")
+    st.info("👆 Click **📍 LOCATE ME** to find your position on the map.")
+    show_circles = False
 
-# ---------------------------------------------------------------------
-# Section: How It Works / Mathematics
-# ---------------------------------------------------------------------
-with st.expander("📐 How It Works / Mathematics"):
-    st.markdown(
-        r"""
-**1. Bluetooth beacons**
-Fixed Bluetooth beacons are placed at known locations inside a building.
-A device (like a phone) picks up signals from each nearby beacon.
+st.markdown("#### 🗺️ Floor Map")
+fig = build_floor_map(
+    floor_label(floor),
+    locations_df,
+    beacons_df,
+    FLOOR_WIDTH, FLOOR_HEIGHT,
+    measured_distances=result["measured_d"] if result else None,
+    show_circles=show_circles,
+    x_est=result["x_est"] if result else None,
+    y_est=result["y_est"] if result else None,
+    destination=destination_point,
+)
+st.plotly_chart(fig, config=PLOTLY_CONFIG)
 
-**2. Distance estimation**
-In a real system, Bluetooth signal measurements such as RSSI (signal
-strength) can be used to *estimate* the distance between the device and
-a beacon — weaker signal generally means further away. INTRIX does not
-use real hardware, so it **simulates** these estimated distances instead.
+with st.expander("🔧 Technical Details — How was my location calculated?"):
+    if result is None:
+        st.caption("Click **Locate Me** first to see the underlying Bluetooth measurements and math.")
+    else:
+        st.markdown("**Simulated Bluetooth distance measurements** (not real hardware readings):")
+        meas_table = beacons_df[["beacon_id"]].copy()
+        meas_table["Estimated Distance (m)"] = np.round(result["measured_d"], 2)
+        st.dataframe(meas_table, hide_index=True, width='stretch')
 
-**3. Distance formula**
+        st.markdown(
+            f"""
+Each measured distance forms a **circle** around its beacon. The estimated
+position above is the point that best fits **all** of these circles at once,
+found using mathematical trilateration (linearization + least squares).
 
-$$d = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2}$$
+- Simulated measurement noise used: **{result['noise_percent']}%**
+            """
+        )
 
-**4. Circle representation**
-If a beacon at $(x_i, y_i)$ measures a distance $d_i$ to the device, the
-device could be *anywhere* on the circle:
+        st.markdown("##### Simulation Verification")
+        st.caption(
+            "The actual simulated position below is the hidden position used to "
+            "generate the measurements above. It is used only to check how close "
+            "the prediction landed — it is **never** given to the trilateration algorithm."
+        )
 
-$$(x - x_i)^2 + (y - y_i)^2 = d_i^2$$
+        gx, gy = result["ground_truth"]
+        vc1, vc2 = st.columns(2)
+        vc1.metric("Predicted Position", f"X = {result['x_est']:.2f} m, Y = {result['y_est']:.2f} m")
+        vc2.metric("Actual Simulated Position", f"X = {gx:.2f} m, Y = {gy:.2f} m")
 
-One beacon alone only narrows the device down to a circle. A second
-beacon narrows it to (at most) two intersection points. A third beacon
-resolves the position uniquely — and extra beacons help average out
-measurement noise.
-
-**5. Trilateration**
-INTRIX subtracts the equation of one reference beacon from the equations
-of all the others. This cancels out the squared terms and turns the
-problem into a system of *linear* equations, which is then solved with
-least squares (`numpy.linalg.lstsq`) to find the $(x, y)$ that best fits
-every circle at once. Trilateration uses **distances**, not angles —
-that's what separates it from triangulation.
-
-**6. Effect of noise**
-At 0% noise, the simulated measurements exactly match the true
-distances, so the circles meet (almost) perfectly and the estimated
-position lands right on the hidden ground truth. As noise increases,
-the circles stop agreeing with each other as precisely, and the
-best-fit position drifts further from the truth — so positioning error
-generally increases.
-
-**7. Position error**
-
-$$\text{Error} = \sqrt{(X_{actual} - X_{estimated})^2 + (Y_{actual} - Y_{estimated})^2}$$
-
-The ground-truth position is used **only** here, to grade the result —
-never to calculate it.
-        """
-    )
+        vc3, vc4 = st.columns(2)
+        vc3.metric("Position Error", f"{result['error']:.2f} m")
+        vc4.metric("Result", simulation_status(result["error"]))
 
 st.divider()
 st.caption(
