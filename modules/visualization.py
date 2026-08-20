@@ -1,4 +1,3 @@
-
 import numpy as np
 import plotly.graph_objects as go
 
@@ -23,6 +22,25 @@ def _circle_points(cx, cy, r, n=120):
     x = cx + r * np.cos(theta)
     y = cy + r * np.sin(theta)
     return x, y
+
+
+def _nice_tick_step(span, target_ticks=6):
+    """Pick a 'round' tick spacing (1/2/5 x 10^n) for a given axis span
+    so the coordinate grid reads cleanly regardless of floor size."""
+    if span <= 0:
+        return 1
+    raw_step = span / target_ticks
+    magnitude = 10 ** np.floor(np.log10(raw_step))
+    residual = raw_step / magnitude
+    if residual <= 1:
+        step = 1
+    elif residual <= 2:
+        step = 2
+    elif residual <= 5:
+        step = 5
+    else:
+        step = 10
+    return step * magnitude
 
 
 def build_floor_map(floor_label, locations_df, beacons_df,
@@ -133,15 +151,38 @@ def build_floor_map(floor_label, locations_df, beacons_df,
             name="Destination",
         ))
 
+    x_dtick = _nice_tick_step(floor_width)
+    y_dtick = _nice_tick_step(floor_height)
+
     fig.update_layout(
         title=f"{floor_label} — Hospital Map",
-        xaxis=dict(visible=False, range=[-1, floor_width + 1]),
-        yaxis=dict(visible=False, range=[-1, floor_height + 1], scaleanchor="x", scaleratio=1),
+        xaxis=dict(
+            visible=True,
+            range=[-1, floor_width + 1],
+            title=dict(text="X (m)", font=dict(size=12, color="#666666")),
+            tick0=0, dtick=x_dtick,
+            tickfont=dict(size=11, color="#555555"),
+            showgrid=True, gridcolor="rgba(0,0,0,0.08)", gridwidth=1,
+            zeroline=True, zerolinecolor="#999999", zerolinewidth=1.5,
+            showline=True, linecolor="#444444", linewidth=1.5,
+            mirror=True,
+        ),
+        yaxis=dict(
+            visible=True,
+            range=[-1, floor_height + 1],
+            title=dict(text="Y (m)", font=dict(size=12, color="#666666")),
+            tick0=0, dtick=y_dtick,
+            tickfont=dict(size=11, color="#555555"),
+            showgrid=True, gridcolor="rgba(0,0,0,0.08)", gridwidth=1,
+            zeroline=True, zerolinecolor="#999999", zerolinewidth=1.5,
+            showline=True, linecolor="#444444", linewidth=1.5,
+            mirror=True,
+            scaleanchor="x", scaleratio=1,
+        ),
         legend=dict(orientation="h", yanchor="bottom", y=-0.15),
         height=560,
-        margin=dict(t=50, b=10, l=10, r=10),
+        margin=dict(t=50, b=50, l=60, r=20),
         plot_bgcolor="white",
     )
 
     return fig
-
