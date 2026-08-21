@@ -92,12 +92,10 @@ else:
 st.sidebar.divider()
 with st.sidebar.expander("📱 Floor QR Codes"):
     st.caption(
-        "Each floor has a printed QR code encoding a link like the one "
-        "below. Scanning it opens INTRIX with that floor already selected."
+        "INTRIX URL"
     )
     base_url = st.text_input(
-        "This app's URL", value="https://your-intrix-app.streamlit.app",
-        help="Replace with the actual URL this app is deployed at.",
+        "This app's URL", value="https://your-intrix.streamlit.app",
     )
     qr_floor_code = st.selectbox(
         "Preview QR for floor", FLOOR_CODES, format_func=floor_label, key="qr_floor_choice"
