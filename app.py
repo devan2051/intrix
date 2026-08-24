@@ -5,6 +5,7 @@ from modules.trilateration import trilaterate, position_error
 from modules.simulation import generate_ground_truth, true_distances, simulate_measurements
 from modules.locator import distance_to_destination, nearest_location
 from modules.visualization import build_floor_map
+from modules.pathfinding import compute_route, simplify_path, generate_directions
 from modules.floors import (
     FLOOR_CODES,
     FLOOR_ICON,
@@ -66,7 +67,7 @@ if "floor" not in st.session_state:
     st.session_state.floor = qp_floor if qp_floor else FLOOR_CODES[0]
 
 st.sidebar.title("📡 INTRIX")
-st.sidebar.caption("Hospital Indoor Positioning")
+st.sidebar.caption("Hospital Indoor Positioning & Wayfinding · v2.2")
 st.sidebar.markdown("#### FLOORS")
 
 came_from_qr = normalize_floor_code(st.query_params.get("floor")) is not None
@@ -128,6 +129,8 @@ with col_moved:
 
 result = st.session_state.result_by_floor.get(floor)
 destination_point = None
+route_points_for_map = None
+directions = None
 
 if result is not None:
     near_name, _near_dist = nearest_location(result["x_est"], result["y_est"], locations_df)
@@ -137,8 +140,36 @@ if result is not None:
     dest_name = st.selectbox("Destination", locations_df["name"].tolist())
     dest_row = locations_df[locations_df["name"] == dest_name].iloc[0]
     dest_distance = distance_to_destination(result["x_est"], result["y_est"], dest_row["x"], dest_row["y"])
-    st.write(f"🏥 **{dest_name}** is approximately **{dest_distance:.1f} m** away.")
+    st.write(f"🏥 **{dest_name}** is approximately **{dest_distance:.1f} m** away in a straight line.")
     destination_point = {"name": dest_name, "x": dest_row["x"], "y": dest_row["y"]}
+
+    # v2.2 pathfinding: dest_row is always on the currently selected floor
+    # (locations_for_floor already filters by floor), but this guard keeps
+    # the app honest if that ever changes — e.g. a future cross-floor
+    # destination picker.
+    if str(dest_row.get("floor", floor)) != str(floor):
+        st.warning(
+            f"🏥 **{dest_name}** is on {floor_label(dest_row['floor'])}. "
+            "Please switch to that floor first, then generate the path again."
+        )
+    else:
+        route = compute_route(
+            result["x_est"], result["y_est"],
+            dest_row["x"], dest_row["y"],
+            floor, FLOOR_WIDTH, FLOOR_HEIGHT,
+        )
+        if "error" in route:
+            st.warning(f"⚠️ {route['error']}")
+        elif route["arrived"]:
+            st.success("📍 You have reached your destination.")
+            directions = generate_directions(route["points"], dest_name)
+        else:
+            route_points_for_map = simplify_path(route["points"])
+            directions = generate_directions(route["points"], dest_name)
+            st.write(
+                f"🚶 **Route distance:** approximately **{route['route_distance']:.1f} m** "
+                "along the walkable path."
+            )
 
     show_circles = st.checkbox(
         "Show measurement circles on map", value=True,
@@ -159,8 +190,14 @@ fig = build_floor_map(
     x_est=result["x_est"] if result else None,
     y_est=result["y_est"] if result else None,
     destination=destination_point,
+    route_points=route_points_for_map,
 )
 st.plotly_chart(fig, config=PLOTLY_CONFIG)
+
+if directions:
+    st.markdown("#### 🧭 Directions")
+    for i, step in enumerate(directions, start=1):
+        st.write(f"{i}. {step['icon']} {step['text']}")
 
 with st.expander("🔧 Technical Details — How was my location calculated?"):
     if result is None:

@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import plotly.graph_objects as go
 
@@ -48,7 +50,8 @@ def build_floor_map(floor_label, locations_df, beacons_df,
                      measured_distances=None, show_circles=True,
                      x_est=None, y_est=None,
                      destination=None,
-                     ground_truth=None, show_ground_truth=False):
+                     ground_truth=None, show_ground_truth=False,
+                     route_points=None):
     fig = go.Figure()
 
     fig.add_shape(
@@ -115,6 +118,38 @@ def build_floor_map(floor_label, locations_df, beacons_df,
         textfont=dict(size=10),
         name="Bluetooth Beacon",
     ))
+
+    if route_points and len(route_points) >= 2:
+        route_x = [p[0] for p in route_points]
+        route_y = [p[1] for p in route_points]
+        fig.add_trace(go.Scatter(
+            x=route_x, y=route_y,
+            mode="lines+markers",
+            line=dict(color="#1a7f5a", width=4),
+            marker=dict(size=6, color="#1a7f5a", symbol="circle"),
+            name="Route",
+            hoverinfo="skip",
+        ))
+
+        # A small arrow at the midpoint of each route segment shows the
+        # direction of travel, without redrawing the whole segment.
+        for i in range(len(route_points) - 1):
+            x0, y0 = route_points[i]
+            x1, y1 = route_points[i + 1]
+            seg_len = math.hypot(x1 - x0, y1 - y0)
+            if seg_len < 1.0:
+                continue
+            ux, uy = (x1 - x0) / seg_len, (y1 - y0) / seg_len
+            mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+            half = min(0.5, seg_len * 0.25)
+            fig.add_annotation(
+                x=mx + ux * half, y=my + uy * half,
+                ax=mx - ux * half, ay=my - uy * half,
+                xref="x", yref="y", axref="x", ayref="y",
+                showarrow=True, arrowhead=3, arrowsize=1.3, arrowwidth=2.5,
+                arrowcolor="#1a7f5a",
+                text="",
+            )
 
     if show_ground_truth and ground_truth is not None:
         gx, gy = ground_truth
