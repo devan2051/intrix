@@ -1,7 +1,7 @@
 
 import pandas as pd
 
-FLOOR_CODES = ["ground", "1", "2", "3"]
+FLOOR_CODES = ["ground", "1", "2"]
 
 FLOOR_NAMES = {
     "ground": "Ground Floor",
