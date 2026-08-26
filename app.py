@@ -196,6 +196,7 @@ if result is not None:
     )
 
     st.markdown("#### 🧭  Where do you want to go?")
+    st.markdown("Destination")")
     dest_name = st.selectbox("Destination", locations_df["name"].tolist(), width=420)
     dest_row = locations_df[locations_df["name"] == dest_name].iloc[0]
     dest_distance = distance_to_destination(result["x_est"], result["y_est"], dest_row["x"], dest_row["y"])
