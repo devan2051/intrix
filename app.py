@@ -139,15 +139,54 @@ st.subheader(f"{FLOOR_ICON} {floor_label(floor)}")
 beacons_df = beacons_for_floor(floor)
 locations_df = locations_for_floor(floor)
 
-col_locate, col_moved = st.columns([2, 1])
+col_locate, col_moved, col_moved_info = st.columns([20, 8, 2])
 with col_locate:
     if st.button("📍 LOCATE ME", type="primary", width='stretch'):
         run_locate_me(floor)
 with col_moved:
-    if st.button("🔄 Simulate I Moved", width='stretch',
+    if st.button("🔄 Simulation", width='stretch',
                   help="Simulates that you've walked to a different spot on this floor."):
         st.session_state.ground_truth_by_floor.pop(floor, None)
         run_locate_me(floor)
+with col_moved_info:
+    # Small hover-only info icon explaining the Simulation control. Pure
+    # CSS (no JS) so it can't intercept clicks meant for the button next
+    # to it. This app has no forced Streamlit theme, so colors are kept
+    # theme-neutral (mid-gray icon, `currentColor` on hover) rather than
+    # hardcoded to one palette, matching how the rest of v2.2 already
+    # adapts to whichever theme the viewer's browser is using.
+    st.markdown(
+        """
+        <style>
+        .intrix-sim-info-wrap {
+            display: flex; align-items: center; justify-content: center; height: 2.5rem;
+        }
+        .intrix-sim-info {
+            position: relative; display: inline-flex; align-items: center; justify-content: center;
+            width: 1.3rem; height: 1.3rem; border-radius: 50%;
+            background: rgba(128, 128, 128, 0.18); border: 1px solid rgba(128, 128, 128, 0.55);
+            color: rgba(128, 128, 128, 0.95); font-size: 0.78rem; font-weight: 700; cursor: help;
+            user-select: none;
+        }
+        .intrix-sim-info:hover {
+            background: rgba(128, 128, 128, 0.32); color: inherit; border-color: rgba(128, 128, 128, 0.8);
+        }
+        .intrix-sim-info .intrix-sim-tooltip {
+            visibility: hidden; opacity: 0; position: absolute; bottom: 135%; right: 0; width: 200px;
+            background-color: #262730; color: #fafafa; text-align: left; padding: 0.5rem 0.65rem;
+            border-radius: 0.4rem; border: 1px solid rgba(250, 250, 250, 0.15);
+            font-size: 0.75rem; font-weight: 400; line-height: 1.35;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); transition: opacity 0.15s ease-in-out;
+            z-index: 1000; pointer-events: none;
+        }
+        .intrix-sim-info:hover .intrix-sim-tooltip { visibility: visible; opacity: 1; }
+        </style>
+        <div class="intrix-sim-info-wrap">
+          <span class="intrix-sim-info">i<span class="intrix-sim-tooltip">Simulates a change in your location to demonstrate how INTRIX recalculates your position and route.</span></span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 result = st.session_state.result_by_floor.get(floor)
 destination_point = None
@@ -156,10 +195,31 @@ directions = None
 
 if result is not None:
     near_name, _near_dist = nearest_location(result["x_est"], result["y_est"], locations_df)
-    st.metric("📍 Your Location", f"Near {near_name}" if near_name else "Unknown")
+    location_value = f"Near {near_name}" if near_name else "Unknown"
+    # Custom hierarchy (v2.2.2): "Your Location" is now the more prominent
+    # line, with the resolved location name as smaller supporting text
+    # underneath it. st.metric() always renders its label smaller than its
+    # value, so a plain markdown block is used here instead to get the
+    # requested emphasis; the displayed text/content is unchanged.
+    st.markdown(
+        f"""
+        <div style="margin-bottom: 1rem;">
+            <div style="font-size: 1.75rem; font-weight: 700; color: inherit; line-height: 1.3;">
+                📍 Your Location
+            </div>
+            <div style="font-size: 1.5rem; font-weight: 500; color: inherit; opacity: 0.75; line-height: 1.3; margin-top: 0.1rem;">
+                {location_value}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("#### 🧭 Where do you want to go?")
-    dest_name = st.selectbox("Destination", locations_df["name"].tolist())
+    # Compact, fixed-width dropdown instead of stretching across the whole
+    # content area; Streamlit's width handling caps it at 100% of its
+    # container so it still shrinks gracefully on narrow screens.
+    dest_name = st.selectbox("Destination", locations_df["name"].tolist(), width=420)
     dest_row = locations_df[locations_df["name"] == dest_name].iloc[0]
     dest_distance = distance_to_destination(result["x_est"], result["y_est"], dest_row["x"], dest_row["y"])
     st.write(f"🏥 **{dest_name}** is approximately **{dest_distance:.1f} m** away in a straight line.")
