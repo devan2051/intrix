@@ -139,15 +139,7 @@ st.subheader(f"{FLOOR_ICON} {floor_label(floor)}")
 beacons_df = beacons_for_floor(floor)
 locations_df = locations_for_floor(floor)
 
-# v2.2.2: Locate Me, the destination picker, and Simulation now live in one
-# horizontal control row: [ LOCATE ME ] [ Where do you want to go? +
-# Destination ] [ Simulation ] [ info ]. `col_dest` is filled further below
-# (after both buttons have had a chance to update session_state) so the
-# destination list reflects a same-run Locate/Simulate click, but it still
-# renders in this row because Streamlit places column content by the slot's
-# position here, not by where in the script it's written to.
-col_locate, col_dest, col_moved, col_moved_info = st.columns([20, 30, 20, 3])
-
+col_locate, col_moved, col_moved_info = st.columns([20, 8, 2])
 with col_locate:
     if st.button("📍 LOCATE ME", type="primary", width='stretch'):
         run_locate_me(floor)
@@ -197,26 +189,9 @@ with col_moved_info:
     )
 
 result = st.session_state.result_by_floor.get(floor)
-
-with col_dest:
-    st.markdown("🧭 **Where do you want to go?**")
-    if result is not None:
-        # Label collapsed since the caption above already names the field;
-        # width defaults to 'stretch', so the dropdown fills only this
-        # column instead of the page.
-        dest_name = st.selectbox(
-            "Destination", locations_df["name"].tolist(),
-            label_visibility="collapsed",
-        )
-    else:
-        dest_name = None
-        st.caption("Locate yourself first to choose a destination.")
-
 destination_point = None
 route_points_for_map = None
 directions = None
-dest_distance_text = None
-route_distance_text = None
 
 if result is not None:
     near_name, _near_dist = nearest_location(result["x_est"], result["y_est"], locations_df)
@@ -225,23 +200,29 @@ if result is not None:
     # line, with the resolved location name as smaller supporting text
     # underneath it. st.metric() always renders its label smaller than its
     # value, so a plain markdown block is used here instead to get the
-    # requested emphasis; the displayed text/content is unchanged. Both
-    # lines sit in a flex column with align-items:flex-start so they share
-    # exactly the same left edge instead of relying on default block flow.
+    # requested emphasis; the displayed text/content is unchanged.
     st.markdown(
         f"""
-        <div style="display: flex; flex-direction: column; align-items: flex-start;
-                    gap: 0.2rem; margin: 0 0 1rem 0; padding: 0;">
-            <span style="font-size: 1.75rem; font-weight: 700; line-height: 1.25; margin: 0; padding: 0;">📍 Your Location</span>
-            <span style="font-size: 1.5rem; font-weight: 500; opacity: 0.75; line-height: 1.25; margin: 0; padding: 0;">{location_value}</span>
+        <div style="margin-bottom: 1rem;">
+            <div style="font-size: 1.75rem; font-weight: 700; color: inherit; line-height: 1.3;">
+                📍 Your Location
+            </div>
+            <div style="font-size: 1.5rem; font-weight: 500; color: inherit; opacity: 0.75; line-height: 1.3; margin-top: 0.1rem;">
+                {location_value}
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    st.markdown("#### 🧭 Where do you want to go?")
+    # Compact, fixed-width dropdown instead of stretching across the whole
+    # content area; Streamlit's width handling caps it at 100% of its
+    # container so it still shrinks gracefully on narrow screens.
+    dest_name = st.selectbox("Destination", locations_df["name"].tolist(), width=420)
     dest_row = locations_df[locations_df["name"] == dest_name].iloc[0]
     dest_distance = distance_to_destination(result["x_est"], result["y_est"], dest_row["x"], dest_row["y"])
-    dest_distance_text = f"🏥 **{dest_name}** is approximately **{dest_distance:.1f} m** away in a straight line."
+    st.write(f"🏥 **{dest_name}** is approximately **{dest_distance:.1f} m** away in a straight line.")
     destination_point = {"name": dest_name, "x": dest_row["x"], "y": dest_row["y"]}
 
     # v2.2 pathfinding: dest_row is always on the currently selected floor
@@ -267,34 +248,20 @@ if result is not None:
         else:
             route_points_for_map = simplify_path(route["points"])
             directions = generate_directions(route["points"], dest_name)
-            route_distance_text = (
+            st.write(
                 f"🚶 **Route distance:** approximately **{route['route_distance']:.1f} m** "
                 "along the walkable path."
             )
-else:
-    st.info("👆 Click **📍 LOCATE ME** to find your position on the map.")
 
-# v2.2.2: the map now renders directly under its header, with the distance/
-# route readout and the "show circles" toggle moved below it. `map_slot` is
-# reserved here (fixing its position right after the header) and filled in
-# further down, once `show_circles` — read from the checkbox below, which
-# must itself render after the map slot — is known, without changing what
-# is actually calculated or plotted.
-st.markdown("#### 🗺️ Floor Map")
-map_slot = st.empty()
-
-if result is not None:
-    if dest_distance_text:
-        st.write(dest_distance_text)
-    if route_distance_text:
-        st.write(route_distance_text)
     show_circles = st.checkbox(
         "Show measurement circles on map", value=True,
         help="Shows the Bluetooth distance circles used to calculate your position.",
     )
 else:
+    st.info("👆 Click **📍 LOCATE ME** to find your position on the map.")
     show_circles = False
 
+st.markdown("#### 🗺️ Floor Map")
 fig = build_floor_map(
     floor_label(floor),
     locations_df,
@@ -307,7 +274,7 @@ fig = build_floor_map(
     destination=destination_point,
     route_points=route_points_for_map,
 )
-map_slot.plotly_chart(fig, config=PLOTLY_CONFIG)
+st.plotly_chart(fig, config=PLOTLY_CONFIG)
 
 if directions:
     st.markdown("#### 🧭 Directions")
