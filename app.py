@@ -31,14 +31,6 @@ PLOTLY_CONFIG = {"displayModeBar": False, "scrollZoom": False}
 
 @st.cache_data
 def _running_build():
-    """Short git commit hash of the code actually running this app.
-
-    Purely diagnostic: lets you confirm from the running page itself
-    (sidebar) whether a deployment has picked up the latest push,
-    instead of guessing from a screenshot. Falls back to "unknown" if
-    git isn't available in the deploy environment (e.g. a zip deploy
-    with no .git folder) rather than breaking the app.
-    """
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -149,12 +141,6 @@ with col_moved:
         st.session_state.ground_truth_by_floor.pop(floor, None)
         run_locate_me(floor)
 with col_moved_info:
-    # Small hover-only info icon explaining the Simulation control. Pure
-    # CSS (no JS) so it can't intercept clicks meant for the button next
-    # to it. This app has no forced Streamlit theme, so colors are kept
-    # theme-neutral (mid-gray icon, `currentColor` on hover) rather than
-    # hardcoded to one palette, matching how the rest of v2.2 already
-    # adapts to whichever theme the viewer's browser is using.
     st.markdown(
         """
         <style>
@@ -198,10 +184,6 @@ route_distance_text = None
 if result is not None:
     near_name, _near_dist = nearest_location(result["x_est"], result["y_est"], locations_df)
     location_value = f"Near {near_name}" if near_name else "Unknown"
-    # v2.2.2 Fix 2: label and value are flex children with
-    # align-items: flex-start, so both lines share exactly the same left
-    # edge regardless of the emoji/text width on the first line — no fixed
-    # pixel offsets, so this holds up at any screen size.
     st.markdown(
         f"""
         <div style="display: flex; flex-direction: column; align-items: flex-start;
@@ -214,21 +196,11 @@ if result is not None:
     )
 
     st.markdown("#### 🧭 Where do you want to go?")
-    # Compact, fixed-width dropdown instead of stretching across the whole
-    # content area; Streamlit's width handling caps it at 100% of its
-    # container so it still shrinks gracefully on narrow screens.
     dest_name = st.selectbox("Destination", locations_df["name"].tolist(), width=420)
     dest_row = locations_df[locations_df["name"] == dest_name].iloc[0]
     dest_distance = distance_to_destination(result["x_est"], result["y_est"], dest_row["x"], dest_row["y"])
-    # v2.2.2 Fix 1: the text itself is only *displayed* after the map now
-    # (see below) — the calculation is unchanged and still happens here.
     dest_distance_text = f"🏥 **{dest_name}** is approximately **{dest_distance:.1f} m** away in a straight line."
     destination_point = {"name": dest_name, "x": dest_row["x"], "y": dest_row["y"]}
-
-    # v2.2 pathfinding: dest_row is always on the currently selected floor
-    # (locations_for_floor already filters by floor), but this guard keeps
-    # the app honest if that ever changes — e.g. a future cross-floor
-    # destination picker.
     if str(dest_row.get("floor", floor)) != str(floor):
         st.warning(
             f"🏥 **{dest_name}** is on {floor_label(dest_row['floor'])}. "
@@ -253,12 +225,6 @@ if result is not None:
                 "along the walkable path."
             )
 
-    # v2.2.2 Fix 1: the "Show measurement circles" checkbox is now rendered
-    # after the map (see below), but build_floor_map() still needs this
-    # run's up-to-date value *before* that point in the script. Its key
-    # ("show_circles_toggle") is the same session_state slot the checkbox
-    # call below reads and writes, so this reads the live value without
-    # rendering the widget twice or moving the map to reach it.
     show_circles = st.session_state.get("show_circles_toggle", True)
 else:
     st.info("👆 Click **📍 LOCATE ME** to find your position on the map.")
@@ -279,10 +245,6 @@ fig = build_floor_map(
 )
 st.plotly_chart(fig, config=PLOTLY_CONFIG)
 
-# v2.2.2 Fix 1: straight-line distance, route distance, and the circles
-# toggle are generated here now — after st.plotly_chart() above — instead
-# of before it. Same text, same calculations, same checkbox; only their
-# position in the script (and therefore in the rendered page) changed.
 if result is not None:
     st.write(dest_distance_text)
     if route_distance_text:
