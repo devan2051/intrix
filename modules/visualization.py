@@ -27,8 +27,6 @@ def _circle_points(cx, cy, r, n=120):
 
 
 def _nice_tick_step(span, target_ticks=6):
-    """Pick a 'round' tick spacing (1/2/5 x 10^n) for a given axis span
-    so the coordinate grid reads cleanly regardless of floor size."""
     if span <= 0:
         return 1
     raw_step = span / target_ticks
@@ -131,8 +129,6 @@ def build_floor_map(floor_label, locations_df, beacons_df,
             hoverinfo="skip",
         ))
 
-        # A small arrow at the midpoint of each route segment shows the
-        # direction of travel, without redrawing the whole segment.
         for i in range(len(route_points) - 1):
             x0, y0 = route_points[i]
             x1, y1 = route_points[i + 1]
