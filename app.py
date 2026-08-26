@@ -192,24 +192,22 @@ result = st.session_state.result_by_floor.get(floor)
 destination_point = None
 route_points_for_map = None
 directions = None
+dest_distance_text = None
+route_distance_text = None
 
 if result is not None:
     near_name, _near_dist = nearest_location(result["x_est"], result["y_est"], locations_df)
     location_value = f"Near {near_name}" if near_name else "Unknown"
-    # Custom hierarchy (v2.2.2): "Your Location" is now the more prominent
-    # line, with the resolved location name as smaller supporting text
-    # underneath it. st.metric() always renders its label smaller than its
-    # value, so a plain markdown block is used here instead to get the
-    # requested emphasis; the displayed text/content is unchanged.
+    # v2.2.2 Fix 2: label and value are flex children with
+    # align-items: flex-start, so both lines share exactly the same left
+    # edge regardless of the emoji/text width on the first line — no fixed
+    # pixel offsets, so this holds up at any screen size.
     st.markdown(
         f"""
-        <div style="margin-bottom: 1rem;">
-            <div style="font-size: 1.75rem; font-weight: 700; color: inherit; line-height: 1.3;">
-                📍 Your Location
-            </div>
-            <div style="font-size: 1.5rem; font-weight: 500; color: inherit; opacity: 0.75; line-height: 1.3; margin-top: 0.1rem;">
-                {location_value}
-            </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-start;
+                    gap: 0.2rem; margin: 0 0 1rem 0; padding: 0;">
+            <span style="font-size: 1.75rem; font-weight: 700; line-height: 1.25;">📍 Your Location</span>
+            <span style="font-size: 1.5rem; font-weight: 500; opacity: 0.75; line-height: 1.25;">{location_value}</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -222,7 +220,9 @@ if result is not None:
     dest_name = st.selectbox("Destination", locations_df["name"].tolist(), width=420)
     dest_row = locations_df[locations_df["name"] == dest_name].iloc[0]
     dest_distance = distance_to_destination(result["x_est"], result["y_est"], dest_row["x"], dest_row["y"])
-    st.write(f"🏥 **{dest_name}** is approximately **{dest_distance:.1f} m** away in a straight line.")
+    # v2.2.2 Fix 1: the text itself is only *displayed* after the map now
+    # (see below) — the calculation is unchanged and still happens here.
+    dest_distance_text = f"🏥 **{dest_name}** is approximately **{dest_distance:.1f} m** away in a straight line."
     destination_point = {"name": dest_name, "x": dest_row["x"], "y": dest_row["y"]}
 
     # v2.2 pathfinding: dest_row is always on the currently selected floor
@@ -248,15 +248,18 @@ if result is not None:
         else:
             route_points_for_map = simplify_path(route["points"])
             directions = generate_directions(route["points"], dest_name)
-            st.write(
+            route_distance_text = (
                 f"🚶 **Route distance:** approximately **{route['route_distance']:.1f} m** "
                 "along the walkable path."
             )
 
-    show_circles = st.checkbox(
-        "Show measurement circles on map", value=True,
-        help="Shows the Bluetooth distance circles used to calculate your position.",
-    )
+    # v2.2.2 Fix 1: the "Show measurement circles" checkbox is now rendered
+    # after the map (see below), but build_floor_map() still needs this
+    # run's up-to-date value *before* that point in the script. Its key
+    # ("show_circles_toggle") is the same session_state slot the checkbox
+    # call below reads and writes, so this reads the live value without
+    # rendering the widget twice or moving the map to reach it.
+    show_circles = st.session_state.get("show_circles_toggle", True)
 else:
     st.info("👆 Click **📍 LOCATE ME** to find your position on the map.")
     show_circles = False
@@ -275,6 +278,20 @@ fig = build_floor_map(
     route_points=route_points_for_map,
 )
 st.plotly_chart(fig, config=PLOTLY_CONFIG)
+
+# v2.2.2 Fix 1: straight-line distance, route distance, and the circles
+# toggle are generated here now — after st.plotly_chart() above — instead
+# of before it. Same text, same calculations, same checkbox; only their
+# position in the script (and therefore in the rendered page) changed.
+if result is not None:
+    st.write(dest_distance_text)
+    if route_distance_text:
+        st.write(route_distance_text)
+    show_circles = st.checkbox(
+        "Show measurement circles on map", value=True,
+        help="Shows the Bluetooth distance circles used to calculate your position.",
+        key="show_circles_toggle",
+    )
 
 if directions:
     st.markdown("#### 🧭 Directions")
