@@ -14,8 +14,3 @@ ground,Main Waiting Area,Public,25,10,10,20
 2,Operation Theatre,Surgery,4,15,8,8
 2,Staff Area,Staff,14,15,8,8
 2,Patient Room 204,Patient Room,25,10,10,20
-3,Cardiology,Consultation,4,4,8,8
-3,Consultation Rooms,Consultation,14,4,8,8
-3,Neurology,Consultation,4,15,8,8
-3,Waiting Area,Public,14,15,8,8
-3,Physiotherapy,Service,25,10,10,20
