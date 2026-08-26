@@ -189,7 +189,7 @@ if result is not None:
         <div style="display: flex; flex-direction: column; align-items: flex-start;
                     gap: 0.2rem; margin: 0 0 1rem 0; padding: 0;">
             <span style="font-size: 1.75rem; font-weight: 700; line-height: 1.25;">📍Your Location: </span>
-            <span style="font-size: 1.5rem; font-weight: 700; opacity: 0.75; line-height: 1.25;">📍{location_value}</span>
+            <span style="font-size: 1.5rem; font-weight: 700; opacity: 0.75; line-height: 1.25;">{location_value}</span>
         </div>
         """,
         unsafe_allow_html=True,
