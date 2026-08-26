@@ -1,3 +1,5 @@
+import subprocess
+
 import numpy as np
 import streamlit as st
 
@@ -25,6 +27,25 @@ st.set_page_config(page_title="INTRIX — Hospital Locator", page_icon="🏥", l
 DEFAULT_NOISE_PERCENT = 12
 
 PLOTLY_CONFIG = {"displayModeBar": False, "scrollZoom": False}
+
+
+@st.cache_data
+def _running_build():
+    """Short git commit hash of the code actually running this app.
+
+    Purely diagnostic: lets you confirm from the running page itself
+    (sidebar) whether a deployment has picked up the latest push,
+    instead of guessing from a screenshot. Falls back to "unknown" if
+    git isn't available in the deploy environment (e.g. a zip deploy
+    with no .git folder) rather than breaking the app.
+    """
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL, timeout=2,
+        ).decode().strip()
+    except Exception:
+        return "unknown"
 
 
 def simulation_status(error_m):
@@ -68,6 +89,7 @@ if "floor" not in st.session_state:
 
 st.sidebar.title("📡 INTRIX")
 st.sidebar.caption("Hospital Indoor Positioning & Wayfinding · v2.2")
+st.sidebar.caption(f"Running build: `{_running_build()}`")
 st.sidebar.markdown("#### FLOORS")
 
 came_from_qr = normalize_floor_code(st.query_params.get("floor")) is not None
